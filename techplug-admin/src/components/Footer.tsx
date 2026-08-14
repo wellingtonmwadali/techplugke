@@ -43,7 +43,13 @@ export default function Footer() {
       <div className="mx-auto max-w-7xl px-4 py-16 sm:px-6 lg:px-8">
         <div className="grid gap-6 md:grid-cols-4">
           <div className="rounded-3xl bg-white/5 p-6 shadow-soft">
-            <SiteLogo invert />
+            {/* A light chip behind the logo, rather than CSS-inverting it, so this renders
+                correctly no matter what the logo image actually looks like — an invert filter
+                only works for a transparent-background logo, and both the current placeholder
+                and any future admin-uploaded logo aren't guaranteed to be that. */}
+            <div className="inline-block rounded-xl bg-white p-2">
+              <SiteLogo />
+            </div>
             <p className="mt-4 text-sm text-white/70 leading-relaxed">
               Genuine phones, laptops, TVs, audio and accessories — sourced for quality,
               backed by warranty, and delivered countrywide.

@@ -385,8 +385,14 @@ export default function ProductForm({ product }: { product?: Product }) {
         <div className="rounded-2xl border border-slate-200 p-5">
           <FieldLabel>Variants (optional)</FieldLabel>
           <p className="-mt-1 mb-4 text-xs text-slate-400">
-            For products that come in configurations with different prices, e.g. RAM or storage.
-            Colors don&apos;t need to go here — they never change the price.
+            For products that come in configurations with different prices. Add one option per
+            spec that actually varies — e.g. add &ldquo;RAM&rdquo; once, then give{" "}
+            <em>that</em> option two values, &ldquo;6GB&rdquo; and &ldquo;8GB&rdquo;. Don&apos;t
+            add &ldquo;6GB RAM&rdquo; and &ldquo;8GB RAM&rdquo; as two separate options — every
+            option needs a value in every combination below, so two RAM options would force each
+            variant to have both at once. A spec that doesn&apos;t vary (like a fixed 256GB
+            storage) belongs in the Specs field further down, not here. Colors above never need
+            to go here either — they never change the price.
           </p>
 
           <div className="flex flex-wrap items-end gap-3">
@@ -401,7 +407,7 @@ export default function ProductForm({ product }: { product?: Product }) {
                     addDimension();
                   }
                 }}
-                placeholder="e.g. RAM"
+                placeholder="e.g. RAM — then add its values (6GB, 8GB) below"
                 className={inputClass}
               />
             </div>

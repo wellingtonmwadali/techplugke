@@ -8,7 +8,7 @@ import { getPublicSettings } from "@/lib/settings";
 // Shared between Header and Footer so both always render the same logo — sourced from Settings
 // (admin-uploaded, see ad-techplugke/settings) with a fallback to the static /logo.png shipped in
 // the storefront when no custom logo has been uploaded yet.
-export default function SiteLogo({ invert = false, className = "" }: { invert?: boolean; className?: string }) {
+export default function SiteLogo({ className = "" }: { className?: string }) {
   const [logoUrl, setLogoUrl] = useState<string | null>(null);
   const [shopName, setShopName] = useState("TechPlug Kenya");
 
@@ -29,7 +29,7 @@ export default function SiteLogo({ invert = false, className = "" }: { invert?: 
         width={160}
         height={160}
         unoptimized={!!logoUrl}
-        className={`h-9 w-auto object-contain ${invert ? "brightness-0 invert" : ""}`}
+        className="h-9 w-auto object-contain"
       />
     </Link>
   );
