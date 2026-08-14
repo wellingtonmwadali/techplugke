@@ -1,0 +1,71 @@
+@import "tailwindcss";
+
+:root {
+  --color-ink: #0b1120;
+  --color-cream: #f7f9fc;
+  --color-signal: #2563eb;
+  --color-royal: #1e3a8a;
+  --color-leather: #475569;
+  --color-white: #ffffff;
+  --color-sale: #c8442f;
+  --color-line: #dbe3ef;
+  --shadow-soft: 0 2px 8px rgba(11, 17, 32, 0.04), 0 16px 32px -12px rgba(11, 17, 32, 0.12);
+}
+
+@theme inline {
+  --color-ink: var(--color-ink);
+  --color-cream: var(--color-cream);
+  --color-signal: var(--color-signal);
+  --color-royal: var(--color-royal);
+  --color-leather: var(--color-leather);
+  --color-sale: var(--color-sale);
+  --color-line: var(--color-line);
+  --font-display: var(--font-jakarta), -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  --font-sans: var(--font-jakarta), -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+}
+
+body {
+  background: var(--color-cream);
+  color: var(--color-ink);
+}
+
+.arch {
+  border-radius: 999px 999px 12px 12px;
+}
+
+.hairline {
+  border-color: var(--color-line);
+}
+
+.shadow-soft {
+  box-shadow: var(--shadow-soft);
+}
+
+::selection {
+  background: var(--color-signal);
+  color: var(--color-ink);
+}
+
+/* Consistent keyboard-focus indicator as a fallback for any interactive element that
+   doesn't already define its own focus style (Tailwind's focus: utilities, which target
+   :focus rather than :focus-visible, still take precedence where they're set explicitly). */
+@layer base {
+  a:focus-visible,
+  button:focus-visible,
+  input:focus-visible,
+  select:focus-visible,
+  textarea:focus-visible {
+    outline: 2px solid var(--color-signal);
+    outline-offset: 2px;
+    border-radius: 4px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
