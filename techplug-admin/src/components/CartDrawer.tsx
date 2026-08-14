@@ -5,6 +5,7 @@ import Image from "next/image";
 import { X, Minus, Plus, Trash2, ArrowUpRight } from "lucide-react";
 import { useCart } from "@/context/CartContext";
 import { formatKes } from "@/lib/format";
+import { describeVariantOptions, resolvePrice } from "@/lib/variants";
 
 const FREE_SHIPPING_THRESHOLD = 5000;
 
@@ -73,7 +74,7 @@ export default function CartDrawer() {
                   if (!product) return null;
                   return (
                     <li
-                      key={`${line.productId}-${line.color}`}
+                      key={`${line.productId}-${line.color}-${describeVariantOptions(line.variantOptions)}`}
                       className="flex gap-4 rounded-2xl bg-cream/60 p-3"
                     >
                       <div className="relative h-24 w-20 shrink-0 overflow-hidden rounded-xl bg-white">
@@ -84,19 +85,21 @@ export default function CartDrawer() {
                           <p className="text-sm font-medium leading-tight">{product.name}</p>
                           <button
                             aria-label="Remove item"
-                            onClick={() => removeItem(line.productId, line.color)}
+                            onClick={() => removeItem(line.productId, line.color, line.variantOptions)}
                             className="flex h-9 w-9 items-center justify-center -mr-2 -mt-1 text-ink/40 hover:text-sale"
                           >
                             <Trash2 size={16} />
                           </button>
                         </div>
-                        <p className="text-xs text-ink/60">{line.color}</p>
+                        <p className="text-xs text-ink/60">
+                          {[line.color, describeVariantOptions(line.variantOptions)].filter(Boolean).join(" · ")}
+                        </p>
                         <div className="mt-auto flex items-center justify-between">
                           <div className="flex items-center gap-3 rounded-full border hairline bg-white px-2 py-1">
                             <button
                               aria-label="Decrease quantity"
                               onClick={() =>
-                                updateQuantity(line.productId, line.color, line.quantity - 1)
+                                updateQuantity(line.productId, line.color, line.variantOptions, line.quantity - 1)
                               }
                               className="flex h-8 w-8 items-center justify-center"
                             >
@@ -106,14 +109,16 @@ export default function CartDrawer() {
                             <button
                               aria-label="Increase quantity"
                               onClick={() =>
-                                updateQuantity(line.productId, line.color, line.quantity + 1)
+                                updateQuantity(line.productId, line.color, line.variantOptions, line.quantity + 1)
                               }
                               className="flex h-8 w-8 items-center justify-center"
                             >
                               <Plus size={14} />
                             </button>
                           </div>
-                          <p className="text-sm font-medium">{formatKes(product.price * line.quantity)}</p>
+                          <p className="text-sm font-medium">
+                            {formatKes(resolvePrice(product, line.variantOptions) * line.quantity)}
+                          </p>
                         </div>
                       </div>
                     </li>

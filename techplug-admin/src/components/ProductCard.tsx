@@ -7,6 +7,7 @@ import { Plus, Star } from "lucide-react";
 import { Product } from "@/lib/types";
 import { formatKes } from "@/lib/format";
 import { useCart } from "@/context/CartContext";
+import { cheapestVariant } from "@/lib/variants";
 import WishlistButton from "./WishlistButton";
 
 // Deterministic placeholder rating (no rating field exists in the product schema/API yet).
@@ -25,7 +26,10 @@ export default function ProductCard({ product }: { product: Product }) {
   function handleQuickAdd(e: React.MouseEvent) {
     e.preventDefault();
     if (!product.inStock) return;
-    addItem(product, product.colors[0] ?? "", 1);
+    // A product with variants has no single price to quick-add at — grab the cheapest
+    // combination rather than sending the shopper to the product page just to pick one.
+    const variant = cheapestVariant(product);
+    addItem(product, product.colors[0] ?? "", variant?.options, 1);
   }
 
   return (

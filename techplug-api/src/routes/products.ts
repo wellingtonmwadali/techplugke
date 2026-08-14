@@ -2,7 +2,14 @@ import { Router } from "express";
 import mongoose, { type HydratedDocument } from "mongoose";
 import { authenticate } from "../middleware/authenticate.js";
 import { requireAdmin } from "../middleware/requireAdmin.js";
-import { IMAGE_BACKGROUNDS, Product, type ImageBackground, type ProductDocument } from "../models/Product.js";
+import {
+  IMAGE_BACKGROUNDS,
+  Product,
+  type ImageBackground,
+  type ProductDocument,
+  type ProductVariant,
+  type ProductVariantOption,
+} from "../models/Product.js";
 import { escapeRegExp } from "../utils/text.js";
 import { validateImageDimensions } from "../utils/imageDimensions.js";
 import { parsePagination } from "../utils/pagination.js";
@@ -28,6 +35,43 @@ function isImageBackground(value: unknown): value is ImageBackground {
   return typeof value === "string" && (IMAGE_BACKGROUNDS as readonly string[]).includes(value);
 }
 
+function isValidVariantOptions(value: unknown): value is ProductVariantOption[] {
+  return (
+    Array.isArray(value) &&
+    value.every(
+      (v) =>
+        v &&
+        typeof v === "object" &&
+        typeof (v as Record<string, unknown>).name === "string" &&
+        (v as { name: string }).name.trim().length > 0 &&
+        Array.isArray((v as { values: unknown }).values) &&
+        ((v as { values: unknown[] }).values as unknown[]).every((val) => typeof val === "string" && val.trim())
+    )
+  );
+}
+
+function isValidVariants(value: unknown): value is ProductVariant[] {
+  return (
+    Array.isArray(value) &&
+    value.every((v) => {
+      if (!v || typeof v !== "object") return false;
+      const variant = v as Record<string, unknown>;
+      if (typeof variant.price !== "number" || variant.price < 0) return false;
+      if (variant.compareAtPrice !== undefined && typeof variant.compareAtPrice !== "number") return false;
+      if (!variant.options || typeof variant.options !== "object") return false;
+      return Object.values(variant.options as Record<string, unknown>).every((val) => typeof val === "string");
+    })
+  );
+}
+
+// Keeps the base `price` (used by product cards, price sort/filter, and any code that hasn't
+// been taught about variants) equal to the cheapest variant whenever variants are set — so admins
+// only ever have to think about per-variant prices once a product has any.
+function cheapestVariantPrice(variants: ProductVariant[]): number | undefined {
+  if (variants.length === 0) return undefined;
+  return Math.min(...variants.map((v) => v.price));
+}
+
 // MongoDB caps a document at 16MB; images are stored as base64 data URIs directly on the
 // product document (see techplug-admin/src/lib/uploadImage.ts), so a handful of them can
 // approach that limit even though each individual file is capped at 2MB client-side. Cap
@@ -49,6 +93,8 @@ const PRODUCT_FIELDS = [
   "images",
   "imageBackgrounds",
   "colors",
+  "variantOptions",
+  "variants",
   "specs",
   "warranty",
   "description",
@@ -257,6 +303,8 @@ productsRouter.post("/:id/duplicate", authenticate, requireAdmin, async (req, re
     images: source.images,
     imageBackgrounds: source.imageBackgrounds,
     colors: source.colors,
+    variantOptions: source.variantOptions,
+    variants: source.variants,
     specs: source.specs,
     warranty: source.warranty,
     description: source.description,
@@ -316,17 +364,37 @@ productsRouter.post("/", authenticate, requireAdmin, async (req, res) => {
     ? body.imageBackgrounds.filter(isImageBackground)
     : [];
 
+  let variantOptions: ProductVariantOption[] | undefined;
+  let variants: ProductVariant[] | undefined;
+  if (body.variantOptions !== undefined || body.variants !== undefined) {
+    if (body.variantOptions !== undefined && !isValidVariantOptions(body.variantOptions)) {
+      res.status(400).json({ error: "Invalid variant options" });
+      return;
+    }
+    if (body.variants !== undefined && !isValidVariants(body.variants)) {
+      res.status(400).json({ error: "Invalid variants" });
+      return;
+    }
+    variantOptions = body.variantOptions;
+    variants = body.variants;
+  }
+  // A product with priced variants always sells at its cheapest variant's price on cards/
+  // listings — see cheapestVariantPrice's doc comment.
+  const price = variants && variants.length > 0 ? cheapestVariantPrice(variants)! : body.price;
+
   try {
     const product = new Product({
       name: body.name,
       slug: typeof body.slug === "string" && body.slug.trim() ? slugify(body.slug) : slugify(body.name),
       brand: body.brand,
-      price: body.price,
+      price,
       compareAtPrice: body.compareAtPrice,
       categorySlugs: body.categorySlugs,
       images: body.images,
       imageBackgrounds,
       colors: Array.isArray(body.colors) ? body.colors : [],
+      variantOptions,
+      variants,
       specs: body.specs,
       warranty: body.warranty,
       description: body.description,
@@ -366,6 +434,15 @@ productsRouter.put("/:id", authenticate, requireAdmin, async (req, res) => {
     }
   }
 
+  if (body.variantOptions !== undefined && !isValidVariantOptions(body.variantOptions)) {
+    res.status(400).json({ error: "Invalid variant options" });
+    return;
+  }
+  if (body.variants !== undefined && !isValidVariants(body.variants)) {
+    res.status(400).json({ error: "Invalid variants" });
+    return;
+  }
+
   const update: Record<string, unknown> = {};
 
   if (body.name !== undefined) update.name = body.name;
@@ -381,6 +458,14 @@ productsRouter.put("/:id", authenticate, requireAdmin, async (req, res) => {
       : [];
   }
   if (body.colors !== undefined) update.colors = body.colors;
+  if (body.variantOptions !== undefined) update.variantOptions = body.variantOptions;
+  if (body.variants !== undefined) {
+    update.variants = body.variants;
+    // See cheapestVariantPrice's doc comment — this overrides whatever `price` the client sent
+    // whenever variants are (still) present, same rule as create.
+    const cheapest = cheapestVariantPrice(body.variants as ProductVariant[]);
+    if (cheapest !== undefined) update.price = cheapest;
+  }
   if (body.specs !== undefined) update.specs = body.specs;
   if (body.warranty !== undefined) update.warranty = body.warranty;
   if (body.description !== undefined) update.description = body.description;

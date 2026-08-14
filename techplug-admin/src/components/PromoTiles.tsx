@@ -43,12 +43,12 @@ export default function PromoTiles() {
         href="/checkout"
         className="flex flex-1 flex-col justify-end rounded-lg bg-signal p-6 text-ink"
       >
-        <p className="font-display text-2xl leading-tight">
+        {/* <p className="font-display text-2xl leading-tight">
           Pay via
           <br />
           Till Number
         </p>
-        <p className="mt-2 text-sm font-medium">Till: 8744842 · Delivery countrywide</p>
+        <p className="mt-2 text-sm font-medium">Till: 8744842 · Delivery countrywide</p> */}
       </Link>
     </div>
   );

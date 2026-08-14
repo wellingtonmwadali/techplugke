@@ -73,9 +73,9 @@ export default function Header() {
             <span className="flex items-center gap-1.5">
               <Truck size={16} /> Countrywide Delivery
             </span>
-            <span className="flex items-center gap-1.5">
+            {/* <span className="flex items-center gap-1.5">
               <Wallet size={16} /> Pay via Till: 8744842
-            </span>
+            </span> */}
             <a href="tel:+254750032818" className="flex items-center gap-1.5 hover:underline">
               <Phone size={16} /> Call or WhatsApp 0750 032 818
             </a>

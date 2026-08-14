@@ -3,7 +3,7 @@ import { notFound } from "next/navigation";
 import Breadcrumbs from "@/components/Breadcrumbs";
 import CategoryProductGrid from "@/components/CategoryProductGrid";
 import { categories, navCategories } from "@/lib/data";
-import { resolveCategory } from "@/lib/categories";
+import { getCategories, resolveCategory } from "@/lib/categories";
 import { getProducts } from "@/lib/products";
 import { SITE_URL } from "@/lib/siteUrl";
 
@@ -49,7 +49,11 @@ export default async function CategoryPage({ params }: { params: Promise<{ slug:
   const label = await categoryLabel(slug);
   if (!label) notFound();
 
-  const items = await getProducts({ category: slug });
+  const [items, allCategories] = await Promise.all([
+    getProducts({ category: slug }),
+    getCategories(),
+  ]);
+  const subcategories = allCategories.filter((c) => c.parentSlug === slug);
 
   const breadcrumbJsonLd = {
     "@context": "https://schema.org",
@@ -74,7 +78,7 @@ export default async function CategoryPage({ params }: { params: Promise<{ slug:
         </div>
       ) : (
         <div className="mt-6">
-          <CategoryProductGrid items={items} />
+          <CategoryProductGrid items={items} subcategories={subcategories} />
         </div>
       )}
     </div>

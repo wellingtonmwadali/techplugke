@@ -6,6 +6,7 @@ import { CheckCircle } from "lucide-react";
 import { apiFetch } from "@/lib/api";
 import { formatKes } from "@/lib/format";
 import Toast from "@/components/admin/Toast";
+import { describeVariantOptions } from "@/lib/variants";
 
 const STATUSES = ["placed", "processing", "shipped", "delivered", "cancelled"];
 
@@ -22,6 +23,7 @@ type OrderItem = {
   name: string;
   price: number;
   color: string;
+  variantOptions?: Record<string, string>;
   quantity: number;
   image: string;
 };
@@ -121,7 +123,8 @@ export default function AdminOrderDetailPage({ params }: { params: Promise<{ id:
                   <div className="flex-1">
                     <p className="text-sm font-medium">{item.name}</p>
                     <p className="text-xs text-ink/60">
-                      {item.color && `${item.color} · `}Qty {item.quantity}
+                      {[item.color, describeVariantOptions(item.variantOptions)].filter(Boolean).join(" · ")}
+                      {item.color || item.variantOptions ? " · " : ""}Qty {item.quantity}
                     </p>
                   </div>
                   <p className="text-sm font-medium">{formatKes(item.price * item.quantity)}</p>

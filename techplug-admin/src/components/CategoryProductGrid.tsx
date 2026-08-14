@@ -1,9 +1,10 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { ChevronDown } from "lucide-react";
 import ProductCard from "./ProductCard";
-import type { Product } from "@/lib/types";
+import type { Category, Product } from "@/lib/types";
 
 type SortKey = "featured" | "newest" | "price-asc" | "price-desc";
 
@@ -14,10 +15,17 @@ const PRICE_BUCKETS = [
   { label: "Over KSh 6,000", test: (p: number) => p >= 6000 },
 ];
 
-export default function CategoryProductGrid({ items }: { items: Product[] }) {
+export default function CategoryProductGrid({
+  items,
+  subcategories = [],
+}: {
+  items: Product[];
+  subcategories?: Category[];
+}) {
   const [openFilter, setOpenFilter] = useState<string | null>(null);
   const [brands, setBrands] = useState<string[]>([]);
   const [colors, setColors] = useState<string[]>([]);
+  const [subcategorySlugs, setSubcategorySlugs] = useState<string[]>([]);
   const [priceBuckets, setPriceBuckets] = useState<string[]>([]);
   const [sort, setSort] = useState<SortKey>("featured");
 
@@ -29,6 +37,12 @@ export default function CategoryProductGrid({ items }: { items: Product[] }) {
     () => Array.from(new Set(items.flatMap((p) => p.colors))).sort(),
     [items]
   );
+  // Only offer subcategories that at least one product on this page actually has —
+  // e.g. don't show "Lenovo" as a filter if nothing in stock right now is tagged with it.
+  const subcategoryOptions = useMemo(
+    () => subcategories.filter((sc) => items.some((p) => p.categorySlugs.includes(sc.slug))),
+    [subcategories, items]
+  );
 
   function toggle<T>(list: T[], value: T, setList: (v: T[]) => void) {
     setList(list.includes(value) ? list.filter((v) => v !== value) : [...list, value]);
@@ -38,6 +52,12 @@ export default function CategoryProductGrid({ items }: { items: Product[] }) {
     const result = items.filter((p) => {
       if (brands.length > 0 && !(p.brand && brands.includes(p.brand))) return false;
       if (colors.length > 0 && !p.colors.some((c) => colors.includes(c))) return false;
+      if (
+        subcategorySlugs.length > 0 &&
+        !p.categorySlugs.some((slug) => subcategorySlugs.includes(slug))
+      ) {
+        return false;
+      }
       if (priceBuckets.length > 0) {
         const matches = PRICE_BUCKETS.filter((b) => priceBuckets.includes(b.label)).some((b) =>
           b.test(p.price)
@@ -55,9 +75,10 @@ export default function CategoryProductGrid({ items }: { items: Product[] }) {
       default:
         return result;
     }
-  }, [items, brands, colors, priceBuckets, sort]);
+  }, [items, brands, colors, subcategorySlugs, priceBuckets, sort]);
 
-  const hasActiveFilters = brands.length > 0 || colors.length > 0 || priceBuckets.length > 0;
+  const hasActiveFilters =
+    brands.length > 0 || colors.length > 0 || subcategorySlugs.length > 0 || priceBuckets.length > 0;
 
   return (
     <div>
@@ -67,6 +88,7 @@ export default function CategoryProductGrid({ items }: { items: Product[] }) {
             label="Brand"
             open={openFilter === "brand"}
             onToggle={() => setOpenFilter(openFilter === "brand" ? null : "brand")}
+            onClose={() => setOpenFilter(null)}
           >
             {brandOptions.map((b) => (
               <label key={b} className="flex items-center gap-2 px-4 py-2 text-sm hover:bg-cream cursor-pointer">
@@ -86,6 +108,7 @@ export default function CategoryProductGrid({ items }: { items: Product[] }) {
           label="Price"
           open={openFilter === "price"}
           onToggle={() => setOpenFilter(openFilter === "price" ? null : "price")}
+          onClose={() => setOpenFilter(null)}
         >
           {PRICE_BUCKETS.map((b) => (
             <label key={b.label} className="flex items-center gap-2 px-4 py-2 text-sm hover:bg-cream cursor-pointer">
@@ -100,11 +123,33 @@ export default function CategoryProductGrid({ items }: { items: Product[] }) {
           ))}
         </FilterDropdown>
 
+        {subcategoryOptions.length > 0 && (
+          <FilterDropdown
+            label="Category"
+            open={openFilter === "subcategory"}
+            onToggle={() => setOpenFilter(openFilter === "subcategory" ? null : "subcategory")}
+            onClose={() => setOpenFilter(null)}
+          >
+            {subcategoryOptions.map((sc) => (
+              <label key={sc.slug} className="flex items-center gap-2 px-4 py-2 text-sm hover:bg-cream cursor-pointer">
+                <input
+                  type="checkbox"
+                  className="accent-signal"
+                  checked={subcategorySlugs.includes(sc.slug)}
+                  onChange={() => toggle(subcategorySlugs, sc.slug, setSubcategorySlugs)}
+                />
+                {sc.name}
+              </label>
+            ))}
+          </FilterDropdown>
+        )}
+
         {colorOptions.length > 0 && (
           <FilterDropdown
             label="Color"
             open={openFilter === "color"}
             onToggle={() => setOpenFilter(openFilter === "color" ? null : "color")}
+            onClose={() => setOpenFilter(null)}
           >
             {colorOptions.map((c) => (
               <label key={c} className="flex items-center gap-2 px-4 py-2 text-sm hover:bg-cream cursor-pointer">
@@ -125,6 +170,7 @@ export default function CategoryProductGrid({ items }: { items: Product[] }) {
             onClick={() => {
               setBrands([]);
               setColors([]);
+              setSubcategorySlugs([]);
               setPriceBuckets([]);
             }}
             className="text-xs text-ink/60 underline shrink-0"
@@ -175,16 +221,55 @@ function FilterDropdown({
   label,
   open,
   onToggle,
+  onClose,
   children,
 }: {
   label: string;
   open: boolean;
   onToggle: () => void;
+  onClose: () => void;
   children: React.ReactNode;
 }) {
+  const buttonRef = useRef<HTMLButtonElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
+  const [coords, setCoords] = useState<{ top: number; left: number } | null>(null);
+
+  // The panel renders in a portal (see below) specifically so it isn't a layout child of the
+  // sticky filter bar — that bar scrolls horizontally on mobile (overflow-x-auto), and CSS
+  // forces the vertical axis to clip too whenever the horizontal one isn't `visible`. Left as a
+  // normal absolutely-positioned child, the panel either got cut off by that clipping or (once
+  // it did render) pushed the bar's own height around. Fixed positioning computed from the
+  // trigger button's rect sidesteps both problems entirely.
+  useEffect(() => {
+    if (!open) return;
+    function updatePosition() {
+      const rect = buttonRef.current?.getBoundingClientRect();
+      if (rect) setCoords({ top: rect.bottom + 8, left: rect.left });
+    }
+    updatePosition();
+    window.addEventListener("scroll", updatePosition, true);
+    window.addEventListener("resize", updatePosition);
+    return () => {
+      window.removeEventListener("scroll", updatePosition, true);
+      window.removeEventListener("resize", updatePosition);
+    };
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) return;
+    function handlePointerDown(e: MouseEvent) {
+      const target = e.target as Node;
+      if (buttonRef.current?.contains(target) || panelRef.current?.contains(target)) return;
+      onClose();
+    }
+    document.addEventListener("mousedown", handlePointerDown);
+    return () => document.removeEventListener("mousedown", handlePointerDown);
+  }, [open, onClose]);
+
   return (
-    <div className="relative shrink-0">
+    <div className="shrink-0">
       <button
+        ref={buttonRef}
         onClick={onToggle}
         aria-haspopup="menu"
         aria-expanded={open}
@@ -193,14 +278,20 @@ function FilterDropdown({
         {label}
         <ChevronDown size={14} />
       </button>
-      {open && (
-        <div
-          role="menu"
-          className="absolute left-0 top-full z-30 mt-2 max-h-64 min-w-[200px] overflow-y-auto rounded-2xl border hairline bg-white py-2 shadow-soft"
-        >
-          {children}
-        </div>
-      )}
+      {open &&
+        coords &&
+        typeof document !== "undefined" &&
+        createPortal(
+          <div
+            ref={panelRef}
+            role="menu"
+            style={{ top: coords.top, left: coords.left }}
+            className="fixed z-50 max-h-64 min-w-[200px] overflow-y-auto rounded-2xl border hairline bg-white py-2 shadow-soft"
+          >
+            {children}
+          </div>,
+          document.body
+        )}
     </div>
   );
 }

@@ -9,6 +9,7 @@ import { useAuth } from "@/context/AuthContext";
 import { formatKes } from "@/lib/format";
 import { apiFetch } from "@/lib/api";
 import MpesaCheckoutModal from "@/components/MpesaCheckoutModal";
+import { describeVariantOptions, resolvePrice } from "@/lib/variants";
 
 const TILL_NUMBER = "8744842";
 
@@ -65,8 +66,11 @@ export default function CheckoutPage() {
         return {
           productId: product.id,
           name: product.name,
-          price: product.price,
+          // Optimistic — the server always re-resolves this authoritatively from the product's
+          // variants (routes/orders.ts), so a stale/tampered price here can't affect the order.
+          price: resolvePrice(product, line.variantOptions),
           color: line.color,
+          variantOptions: line.variantOptions,
           quantity: line.quantity,
           image: product.images[0],
         };
@@ -261,17 +265,23 @@ export default function CheckoutPage() {
               const product = getProduct(line.productId);
               if (!product) return null;
               return (
-                <li key={`${line.productId}-${line.color}`} className="flex gap-3">
+                <li
+                  key={`${line.productId}-${line.color}-${describeVariantOptions(line.variantOptions)}`}
+                  className="flex gap-3"
+                >
                   <div className="relative h-16 w-14 shrink-0 overflow-hidden rounded-xl bg-cream">
                     <Image src={product.images[0]} alt={product.name} fill className="object-cover" />
                   </div>
                   <div className="flex-1">
                     <p className="text-sm font-medium leading-tight">{product.name}</p>
                     <p className="text-xs text-ink/60">
-                      {line.color && `${line.color} · `}Qty {line.quantity}
+                      {[line.color, describeVariantOptions(line.variantOptions)].filter(Boolean).join(" · ")}
+                      {line.color || line.variantOptions ? " · " : ""}Qty {line.quantity}
                     </p>
                   </div>
-                  <p className="text-sm font-medium">{formatKes(product.price * line.quantity)}</p>
+                  <p className="text-sm font-medium">
+                    {formatKes(resolvePrice(product, line.variantOptions) * line.quantity)}
+                  </p>
                 </li>
               );
             })}

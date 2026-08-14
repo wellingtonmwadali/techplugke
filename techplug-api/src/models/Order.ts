@@ -19,6 +19,11 @@ export interface OrderItem {
   name: string;
   price: number;
   color: string;
+  // Which variant (e.g. { RAM: "16GB", Storage: "512GB" }) was selected, if the product has
+  // priced variants — absent for products without variants. `price` above is always the
+  // server-resolved price for this exact combination (see routes/orders.ts), never trusted
+  // from the client.
+  variantOptions?: Record<string, string>;
   quantity: number;
   image: string;
 }
@@ -64,6 +69,7 @@ const orderItemSchema = new Schema<OrderItem>(
     // on a String rejects "" as if it were unset, so this must stay optional to match
     // real catalog data instead of hard-rejecting every colorless product's orders.
     color: { type: String, default: "" },
+    variantOptions: { type: Schema.Types.Mixed },
     quantity: { type: Number, required: true },
     image: { type: String, required: true },
   },

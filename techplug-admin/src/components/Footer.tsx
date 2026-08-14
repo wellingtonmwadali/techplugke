@@ -16,7 +16,6 @@ const resourceLinks = [
 const trustBadges = [
   { icon: ShieldCheck, label: "Quality Products" },
   { icon: Truck, label: "Countrywide Delivery" },
-  { icon: Wallet, label: "Pay via Till: 8744842" },
 ];
 
 function FooterCard({ title, children }: { title: string; children: React.ReactNode }) {
@@ -96,8 +95,8 @@ export default function Footer() {
               <a href="mailto:admin@techplugke.co.ke" className="hover:text-signal transition-colors">
                 admin@techplugke.co.ke
               </a>
-              <p className="mt-2 text-white/50">Payments via M-Pesa Till Number only</p>
-              <p className="font-medium text-white/80">Till: 8744842</p>
+              {/* <p className="mt-2 text-white/50">Payments via M-Pesa Till Number only</p>
+              <p className="font-medium text-white/80">Till: 8744842</p> */}
             </div>
           </FooterCard>
 

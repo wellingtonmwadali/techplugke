@@ -25,6 +25,12 @@ const SHIPPING_FEE = 300;
 const CANCEL_WINDOW_MS = 10 * 60 * 60 * 1000; // 10 hours
 const LOW_STOCK_THRESHOLD = 3;
 
+function isVariantOptions(value: unknown): value is Record<string, string> {
+  if (value === undefined) return true;
+  if (!value || typeof value !== "object") return false;
+  return Object.values(value as Record<string, unknown>).every((v) => typeof v === "string");
+}
+
 function validateItems(items: unknown): items is OrderItem[] {
   if (!Array.isArray(items) || items.length === 0) return false;
   return (items as unknown[]).every((raw) => {
@@ -41,7 +47,22 @@ function validateItems(items: unknown): items is OrderItem[] {
       item.price >= 0 &&
       typeof item.quantity === "number" &&
       item.quantity >= 1 &&
-      typeof item.color === "string"
+      typeof item.color === "string" &&
+      isVariantOptions(item.variantOptions)
+    );
+  });
+}
+
+// Exact-match lookup — a variant "matches" only if it has precisely the same set of option
+// names and values the shopper picked, so a partial/stale selection (e.g. a variant option was
+// removed from the product after the client loaded it) never silently resolves to some other
+// variant's price.
+function findMatchingVariant(product: InstanceType<typeof Product>, variantOptions: Record<string, string>) {
+  return (product.variants ?? []).find((variant) => {
+    const keys = Object.keys(variant.options);
+    return (
+      keys.length === Object.keys(variantOptions).length &&
+      keys.every((key) => variant.options[key] === variantOptions[key])
     );
   });
 }
@@ -111,11 +132,33 @@ ordersRouter.post("/", authenticate, async (req, res) => {
       });
       return;
     }
+
+    // Price always comes from the database, never the client — for a variant product, that
+    // means looking up the exact combination the shopper picked rather than trusting
+    // item.price. A cart built against stale data (a variant was removed/repriced since it was
+    // added) fails clearly here instead of silently charging the wrong amount.
+    let price = product.price;
+    if (product.variants && product.variants.length > 0) {
+      if (!item.variantOptions) {
+        res.status(409).json({ error: `Please choose options for "${product.name}" before checking out.` });
+        return;
+      }
+      const variant = findMatchingVariant(product, item.variantOptions);
+      if (!variant) {
+        res.status(409).json({
+          error: `The selected options for "${product.name}" are no longer available. Please choose again.`,
+        });
+        return;
+      }
+      price = variant.price;
+    }
+
     resolvedItems.push({
       productId: product.id,
       name: product.name,
-      price: product.price,
+      price,
       color: item.color,
+      variantOptions: item.variantOptions,
       quantity: item.quantity,
       image: product.images[0],
     });

@@ -10,15 +10,26 @@ import {
 } from "react";
 import { CartLine, Product } from "@/lib/types";
 import { getProducts } from "@/lib/products";
+import { resolvePrice, sameVariantOptions } from "@/lib/variants";
 
 type CartContextValue = {
   lines: CartLine[];
   isOpen: boolean;
   openCart: () => void;
   closeCart: () => void;
-  addItem: (product: Product, color: string, quantity?: number) => void;
-  removeItem: (productId: string, color: string) => void;
-  updateQuantity: (productId: string, color: string, quantity: number) => void;
+  addItem: (
+    product: Product,
+    color: string,
+    variantOptions?: Record<string, string>,
+    quantity?: number
+  ) => void;
+  removeItem: (productId: string, color: string, variantOptions?: Record<string, string>) => void;
+  updateQuantity: (
+    productId: string,
+    color: string,
+    variantOptions: Record<string, string> | undefined,
+    quantity: number
+  ) => void;
   clearCart: () => void;
   getProduct: (productId: string) => Product | undefined;
   itemCount: number;
@@ -91,36 +102,45 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
   }, [lines]);
 
   const addItem = useCallback(
-    (product: Product, color: string, quantity = 1) => {
+    (product: Product, color: string, variantOptions?: Record<string, string>, quantity = 1) => {
       setProductsById((prev) => ({ ...prev, [product.id]: product }));
       setLines((prev) => {
         const existing = prev.find(
-          (l) => l.productId === product.id && l.color === color
+          (l) =>
+            l.productId === product.id &&
+            l.color === color &&
+            sameVariantOptions(l.variantOptions, variantOptions)
         );
         if (existing) {
           return prev.map((l) =>
             l === existing ? { ...l, quantity: l.quantity + quantity } : l
           );
         }
-        return [...prev, { productId: product.id, color, quantity }];
+        return [...prev, { productId: product.id, color, variantOptions, quantity }];
       });
       setIsOpen(true);
     },
     []
   );
 
-  const removeItem = useCallback((productId: string, color: string) => {
-    setLines((prev) =>
-      prev.filter((l) => !(l.productId === productId && l.color === color))
-    );
-  }, []);
+  const removeItem = useCallback(
+    (productId: string, color: string, variantOptions?: Record<string, string>) => {
+      setLines((prev) =>
+        prev.filter(
+          (l) =>
+            !(l.productId === productId && l.color === color && sameVariantOptions(l.variantOptions, variantOptions))
+        )
+      );
+    },
+    []
+  );
 
   const updateQuantity = useCallback(
-    (productId: string, color: string, quantity: number) => {
+    (productId: string, color: string, variantOptions: Record<string, string> | undefined, quantity: number) => {
       setLines((prev) =>
         prev
           .map((l) =>
-            l.productId === productId && l.color === color
+            l.productId === productId && l.color === color && sameVariantOptions(l.variantOptions, variantOptions)
               ? { ...l, quantity }
               : l
           )
@@ -145,7 +165,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
   const subtotal = useMemo(() => {
     return lines.reduce((sum, l) => {
       const product = productsById[l.productId];
-      return sum + (product ? product.price * l.quantity : 0);
+      return sum + (product ? resolvePrice(product, l.variantOptions) * l.quantity : 0);
     }, 0);
   }, [lines, productsById]);
 

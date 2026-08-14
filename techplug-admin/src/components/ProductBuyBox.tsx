@@ -6,26 +6,60 @@ import { ShieldCheck, Truck, Tag, Cpu, Palette } from "lucide-react";
 import { Product } from "@/lib/types";
 import { formatKes } from "@/lib/format";
 import { useCart } from "@/context/CartContext";
+import { availableValuesFor, cheapestVariant, findVariant } from "@/lib/variants";
 
 export default function ProductBuyBox({ product }: { product: Product }) {
   const [color, setColor] = useState<string | undefined>(product.colors[0]);
+  const [selectedOptions, setSelectedOptions] = useState<Record<string, string>>(() => {
+    const cheapest = cheapestVariant(product);
+    return cheapest ? { ...cheapest.options } : {};
+  });
   const [added, setAdded] = useState(false);
   const { addItem } = useCart();
   const router = useRouter();
 
   const needsColor = product.colors.length > 0;
-  const canAdd = (!needsColor || color !== undefined) && product.inStock;
+  const hasVariants = Boolean(product.variantOptions && product.variantOptions.length > 0);
+  const activeVariant = hasVariants ? findVariant(product, selectedOptions) : undefined;
+  // Every dimension needs a value chosen (and that combination needs a priced variant behind
+  // it) before checkout — a partial selection like "RAM: 16GB" with Storage unset isn't
+  // purchasable, since there's no single price for it.
+  const variantComplete = !hasVariants || Boolean(activeVariant);
+
+  const displayPrice = activeVariant?.price ?? product.price;
+  const displayCompareAtPrice = activeVariant ? activeVariant.compareAtPrice : product.compareAtPrice;
+
+  const canAdd =
+    (!needsColor || color !== undefined) && variantComplete && product.inStock;
+
+  function selectOption(name: string, value: string) {
+    setSelectedOptions((prev) => {
+      const next = { ...prev, [name]: value };
+      // If that choice makes another dimension's current value impossible (e.g. picking
+      // RAM: 8GB when the shopper had Storage: 512GB selected, but 8GB only ever ships with
+      // 256GB), fall back that dimension to whatever's still available instead of leaving an
+      // invalid combination on screen.
+      for (const dim of product.variantOptions ?? []) {
+        if (dim.name === name) continue;
+        const available = availableValuesFor(product, dim.name, next);
+        if (next[dim.name] && !available.includes(next[dim.name])) {
+          next[dim.name] = available[0] ?? next[dim.name];
+        }
+      }
+      return next;
+    });
+  }
 
   const handleAdd = () => {
     if (!canAdd) return;
-    addItem(product, color ?? "", 1);
+    addItem(product, color ?? "", hasVariants ? selectedOptions : undefined, 1);
     setAdded(true);
     setTimeout(() => setAdded(false), 2000);
   };
 
   const handleBuyNow = () => {
     if (!canAdd) return;
-    addItem(product, color ?? "", 1);
+    addItem(product, color ?? "", hasVariants ? selectedOptions : undefined, 1);
     router.push("/checkout");
   };
 
@@ -42,9 +76,9 @@ export default function ProductBuyBox({ product }: { product: Product }) {
       <h1 className="mt-1 font-bold tracking-tight text-3xl">{product.name}</h1>
 
       <div className="mt-4 flex items-center gap-3">
-        <span className="text-2xl font-semibold">{formatKes(product.price)}</span>
-        {product.compareAtPrice && (
-          <span className="text-base text-ink/40 line-through">{formatKes(product.compareAtPrice)}</span>
+        <span className="text-2xl font-semibold">{formatKes(displayPrice)}</span>
+        {displayCompareAtPrice && (
+          <span className="text-base text-ink/40 line-through">{formatKes(displayCompareAtPrice)}</span>
         )}
       </div>
 
@@ -78,6 +112,41 @@ export default function ProductBuyBox({ product }: { product: Product }) {
           </div>
         </div>
       )}
+
+      {hasVariants &&
+        product.variantOptions!.map((dimension) => {
+          const available = availableValuesFor(product, dimension.name, selectedOptions);
+          return (
+            <div key={dimension.name} className="mt-6">
+              <p className="text-sm font-medium">
+                {dimension.name}
+                {selectedOptions[dimension.name] ? `: ${selectedOptions[dimension.name]}` : ""}
+              </p>
+              <div className="mt-2 flex flex-wrap gap-2">
+                {dimension.values.map((value) => {
+                  const isAvailable = available.includes(value);
+                  const isSelected = selectedOptions[dimension.name] === value;
+                  return (
+                    <button
+                      key={value}
+                      onClick={() => isAvailable && selectOption(dimension.name, value)}
+                      disabled={!isAvailable}
+                      className={`rounded-full border px-4 py-1.5 text-sm transition ${
+                        isSelected
+                          ? "border-ink bg-ink text-white"
+                          : isAvailable
+                            ? "hairline hover:bg-cream"
+                            : "hairline cursor-not-allowed text-ink/30 line-through"
+                      }`}
+                    >
+                      {value}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          );
+        })}
 
       <div className="mt-8 grid grid-cols-2 gap-3">
         <button

@@ -8,7 +8,7 @@ import { getCategories } from "@/lib/categories";
 import { apiFetch } from "@/lib/api";
 import { readImageAsDataUrl } from "@/lib/uploadImage";
 import { getPlacements, type PlacementItem } from "@/lib/placements";
-import type { Category, ImageBackground, Product } from "@/lib/types";
+import type { Category, ImageBackground, Product, ProductVariant, ProductVariantOption } from "@/lib/types";
 
 const BACKGROUND_OPTIONS: { value: ImageBackground; label: string }[] = [
   { value: "transparent", label: "Transparent PNG Cutout" },
@@ -40,6 +40,14 @@ export default function ProductForm({ product }: { product?: Product }) {
   const [placementOptions, setPlacementOptions] = useState<PlacementItem[]>([]);
   const [categorySlugs, setCategorySlugs] = useState<string[]>(product?.categorySlugs ?? []);
   const [colorTags, setColorTags] = useState<string[]>(product?.colors ?? []);
+  const [variantDimensions, setVariantDimensions] = useState<ProductVariantOption[]>(
+    product?.variantOptions ?? []
+  );
+  const [newDimensionName, setNewDimensionName] = useState("");
+  const [variantRows, setVariantRows] = useState<ProductVariant[]>(product?.variants ?? []);
+  const [draftVariantOptions, setDraftVariantOptions] = useState<Record<string, string>>({});
+  const [draftVariantPrice, setDraftVariantPrice] = useState("");
+  const [draftVariantCompareAtPrice, setDraftVariantCompareAtPrice] = useState("");
   const [specs, setSpecs] = useState(product?.specs ?? "");
   const [warranty, setWarranty] = useState(product?.warranty ?? "");
   const [badgesText, setBadgesText] = useState(product?.badges?.join(", ") ?? "");
@@ -61,6 +69,15 @@ export default function ProductForm({ product }: { product?: Product }) {
     getCategories().then(setCategories);
     getPlacements().then(setPlacementOptions);
   }, []);
+
+  // Mirrors techplug-api/src/routes/products.ts: whenever variants exist, the product's price
+  // is always the cheapest one — keep the (now read-only) Price field showing that live instead
+  // of a stale manually-typed number.
+  useEffect(() => {
+    if (variantRows.length === 0) return;
+    const cheapest = Math.min(...variantRows.map((v) => v.price));
+    setPrice(String(cheapest));
+  }, [variantRows]);
 
   const parentCategories = categories.filter((c) => !c.parentSlug);
   // Only show subcategories belonging to a category that's currently checked above —
@@ -86,6 +103,58 @@ export default function ProductForm({ product }: { product?: Product }) {
       const childSlugs = categories.filter((c) => c.parentSlug === value).map((c) => c.slug);
       return prev.filter((c) => c !== value && !childSlugs.includes(c));
     });
+  }
+
+  function addDimension() {
+    const name = newDimensionName.trim();
+    if (!name || variantDimensions.some((d) => d.name.toLowerCase() === name.toLowerCase())) return;
+    setVariantDimensions((prev) => [...prev, { name, values: [] }]);
+    setNewDimensionName("");
+  }
+
+  function removeDimension(name: string) {
+    setVariantDimensions((prev) => prev.filter((d) => d.name !== name));
+    // Any combination that used this dimension no longer makes sense once it's gone.
+    setVariantRows((prev) => prev.filter((v) => !(name in v.options)));
+    setDraftVariantOptions((prev) => {
+      const next = { ...prev };
+      delete next[name];
+      return next;
+    });
+  }
+
+  function setDimensionValues(name: string, values: string[]) {
+    setVariantDimensions((prev) => prev.map((d) => (d.name === name ? { ...d, values } : d)));
+    // Drop any variant combination that referenced a value just removed from this dimension.
+    setVariantRows((prev) => prev.filter((v) => !v.options[name] || values.includes(v.options[name])));
+  }
+
+  function sameOptions(a: Record<string, string>, b: Record<string, string>) {
+    return variantDimensions.every((d) => a[d.name] === b[d.name]);
+  }
+
+  function addVariantRow() {
+    if (variantDimensions.length === 0) return;
+    if (variantDimensions.some((d) => !draftVariantOptions[d.name])) return;
+    const priceNum = Number(draftVariantPrice);
+    if (!Number.isFinite(priceNum) || priceNum < 0) return;
+    const compareAtNum = draftVariantCompareAtPrice ? Number(draftVariantCompareAtPrice) : undefined;
+
+    const options = { ...draftVariantOptions };
+    const row: ProductVariant = { options, price: priceNum, compareAtPrice: compareAtNum };
+    setVariantRows((prev) => {
+      // Replace an existing row for the same combination rather than adding a duplicate —
+      // lets the admin correct a price by re-entering it instead of having to delete first.
+      const existingIndex = prev.findIndex((v) => sameOptions(v.options, options));
+      if (existingIndex === -1) return [...prev, row];
+      return prev.map((v, i) => (i === existingIndex ? row : v));
+    });
+    setDraftVariantPrice("");
+    setDraftVariantCompareAtPrice("");
+  }
+
+  function removeVariantRow(index: number) {
+    setVariantRows((prev) => prev.filter((_, i) => i !== index));
   }
 
   async function processFiles(files: File[]) {
@@ -156,6 +225,10 @@ export default function ProductForm({ product }: { product?: Product }) {
       setError("At least one category is required.");
       return;
     }
+    if (variantDimensions.length > 0 && variantRows.length === 0) {
+      setError("Add at least one priced combination for the variant options above, or remove them.");
+      return;
+    }
     const totalImageChars = images.reduce((sum, img) => sum + img.length, 0);
     if (totalImageChars > 12_000_000) {
       setError("Images are too large combined — remove one or use smaller files.");
@@ -173,6 +246,8 @@ export default function ProductForm({ product }: { product?: Product }) {
       images,
       imageBackgrounds,
       colors: colorTags,
+      variantOptions: variantDimensions,
+      variants: variantRows,
       specs: specs || undefined,
       warranty: warranty || undefined,
       badges: badgesText
@@ -272,11 +347,17 @@ export default function ProductForm({ product }: { product?: Product }) {
               <input
                 type="number"
                 required
+                disabled={variantRows.length > 0}
                 value={price}
                 onChange={(e) => setPrice(e.target.value)}
-                className={`${inputClass} pl-12`}
+                className={`${inputClass} pl-12 disabled:cursor-not-allowed disabled:opacity-60`}
               />
             </div>
+            {variantRows.length > 0 && (
+              <p className="mt-1 text-xs text-slate-400">
+                Set automatically from the cheapest variant below.
+              </p>
+            )}
           </div>
           <div>
             <FieldLabel>Compare-at price</FieldLabel>
@@ -297,6 +378,172 @@ export default function ProductForm({ product }: { product?: Product }) {
         {/* Tag/chip inputs */}
         <div className="grid gap-4 sm:grid-cols-2">
           <TagInput label="Colors" tags={colorTags} onChange={setColorTags} placeholder="e.g. Black" />
+        </div>
+
+        {/* Priced variants — e.g. RAM/Storage combinations that each sell at a different price.
+            Colors above never affect price; this is the only mechanism that does. */}
+        <div className="rounded-2xl border border-slate-200 p-5">
+          <FieldLabel>Variants (optional)</FieldLabel>
+          <p className="-mt-1 mb-4 text-xs text-slate-400">
+            For products that come in configurations with different prices, e.g. RAM or storage.
+            Colors don&apos;t need to go here — they never change the price.
+          </p>
+
+          <div className="flex flex-wrap items-end gap-3">
+            <div className="flex-1 min-w-[180px]">
+              <FieldLabel>Option name</FieldLabel>
+              <input
+                value={newDimensionName}
+                onChange={(e) => setNewDimensionName(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    addDimension();
+                  }
+                }}
+                placeholder="e.g. RAM"
+                className={inputClass}
+              />
+            </div>
+            <button
+              type="button"
+              onClick={addDimension}
+              className="rounded-full bg-slate-100 px-5 py-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-200"
+            >
+              Add option
+            </button>
+          </div>
+
+          {variantDimensions.length > 0 && (
+            <div className="mt-4 flex flex-col gap-4">
+              {variantDimensions.map((dim) => (
+                <div key={dim.name} className="flex items-start gap-3 rounded-xl bg-slate-50 p-3">
+                  <div className="flex-1">
+                    <TagInput
+                      label={dim.name}
+                      tags={dim.values}
+                      onChange={(values) => setDimensionValues(dim.name, values)}
+                      placeholder={`e.g. 8GB (press Enter)`}
+                    />
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => removeDimension(dim.name)}
+                    aria-label={`Remove ${dim.name} option`}
+                    className="mt-6 flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-slate-400 hover:bg-slate-200 hover:text-slate-600"
+                  >
+                    <X size={14} />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {variantDimensions.some((d) => d.values.length > 0) && (
+            <div className="mt-5 border-t border-slate-100 pt-5">
+              <FieldLabel>Priced combinations</FieldLabel>
+              <div className="flex flex-wrap items-end gap-3">
+                {variantDimensions
+                  .filter((d) => d.values.length > 0)
+                  .map((dim) => (
+                    <div key={dim.name} className="min-w-[120px]">
+                      <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wider text-slate-500">
+                        {dim.name}
+                      </label>
+                      <select
+                        value={draftVariantOptions[dim.name] ?? ""}
+                        onChange={(e) =>
+                          setDraftVariantOptions((prev) => ({ ...prev, [dim.name]: e.target.value }))
+                        }
+                        className={inputClass}
+                      >
+                        <option value="" disabled>
+                          Select…
+                        </option>
+                        {dim.values.map((v) => (
+                          <option key={v} value={v}>
+                            {v}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  ))}
+                <div className="w-28">
+                  <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wider text-slate-500">
+                    Price
+                  </label>
+                  <input
+                    type="number"
+                    value={draftVariantPrice}
+                    onChange={(e) => setDraftVariantPrice(e.target.value)}
+                    className={inputClass}
+                  />
+                </div>
+                <div className="w-32">
+                  <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wider text-slate-500">
+                    Compare-at
+                  </label>
+                  <input
+                    type="number"
+                    value={draftVariantCompareAtPrice}
+                    onChange={(e) => setDraftVariantCompareAtPrice(e.target.value)}
+                    className={inputClass}
+                  />
+                </div>
+                <button
+                  type="button"
+                  onClick={addVariantRow}
+                  className="rounded-full bg-slate-100 px-5 py-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-200"
+                >
+                  Add
+                </button>
+              </div>
+
+              {variantRows.length > 0 && (
+                <div className="mt-4 overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="text-left text-[11px] font-semibold uppercase tracking-wider text-slate-500">
+                        {variantDimensions.map((d) => (
+                          <th key={d.name} className="pb-2 pr-4">
+                            {d.name}
+                          </th>
+                        ))}
+                        <th className="pb-2 pr-4">Price</th>
+                        <th className="pb-2 pr-4">Compare-at</th>
+                        <th className="pb-2" />
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {variantRows.map((row, i) => (
+                        <tr key={i} className="border-t border-slate-100">
+                          {variantDimensions.map((d) => (
+                            <td key={d.name} className="py-2 pr-4">
+                              {row.options[d.name] ?? "—"}
+                            </td>
+                          ))}
+                          <td className="py-2 pr-4 font-medium">Ksh {row.price.toLocaleString()}</td>
+                          <td className="py-2 pr-4 text-slate-400">
+                            {row.compareAtPrice ? `Ksh ${row.compareAtPrice.toLocaleString()}` : "—"}
+                          </td>
+                          <td className="py-2">
+                            <button
+                              type="button"
+                              onClick={() => removeVariantRow(i)}
+                              aria-label="Remove variant"
+                              className="flex h-7 w-7 items-center justify-center rounded-full text-slate-400 hover:bg-slate-100 hover:text-sale"
+                            >
+                              <Trash2 size={13} />
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          )}
         </div>
 
         <div className="grid gap-4 sm:grid-cols-2">

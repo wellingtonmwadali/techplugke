@@ -3,10 +3,33 @@ import { Schema, model } from "mongoose";
 export const IMAGE_BACKGROUNDS = ["transparent", "studio", "lifestyle"] as const;
 export type ImageBackground = (typeof IMAGE_BACKGROUNDS)[number];
 
+// A spec dimension the shopper can toggle, e.g. { name: "RAM", values: ["8GB", "16GB"] }.
+// Doesn't carry price itself — ProductVariant below is what maps a specific combination of
+// these values to a price. Independent of `colors`, which never affects price.
+export interface ProductVariantOption {
+  name: string;
+  values: string[];
+}
+
+// One priced combination of variant-option values, e.g. { RAM: "16GB", Storage: "512GB" } ->
+// 48000. Not every combination of every option's values needs a ProductVariant — a laptop can
+// offer 8GB only with 256GB while 16GB only comes with 512GB, and the UI (see
+// techplug-admin/src/lib/variants.ts `availableValuesFor`) hides/disables combinations that
+// don't have a matching variant here rather than assuming a full cartesian product exists.
+export interface ProductVariant {
+  options: Record<string, string>;
+  price: number;
+  compareAtPrice?: number;
+}
+
 export interface ProductDocument {
   name: string;
   slug: string;
   brand?: string;
+  // The product's base/list price. When `variants` is non-empty, this is kept in sync with the
+  // cheapest variant's price by routes/products.ts on every create/update, so every consumer
+  // that already reads `price` (product cards, price sort/filter, the cart subtotal fallback)
+  // keeps working without needing to know about variants at all.
   price: number;
   compareAtPrice?: number;
   categorySlugs: string[];
@@ -17,6 +40,8 @@ export interface ProductDocument {
   // there's no separate "isCover" flag.
   imageBackgrounds: ImageBackground[];
   colors: string[];
+  variantOptions?: ProductVariantOption[];
+  variants?: ProductVariant[];
   specs?: string;
   warranty?: string;
   description?: string;
@@ -50,6 +75,22 @@ const productSchema = new Schema<ProductDocument>(
     images: { type: [String], required: true },
     imageBackgrounds: { type: [String], enum: IMAGE_BACKGROUNDS, default: [] },
     colors: { type: [String], default: [] },
+    variantOptions: {
+      type: [{ name: { type: String, required: true }, values: { type: [String], required: true } }],
+      default: undefined,
+      _id: false,
+    },
+    variants: {
+      type: [
+        {
+          options: { type: Schema.Types.Mixed, required: true },
+          price: { type: Number, required: true },
+          compareAtPrice: { type: Number },
+        },
+      ],
+      default: undefined,
+      _id: false,
+    },
     specs: { type: String },
     warranty: { type: String },
     description: { type: String },
