@@ -62,6 +62,13 @@ export default function ProductForm({ product }: { product?: Product }) {
     getPlacements().then(setPlacementOptions);
   }, []);
 
+  const parentCategories = categories.filter((c) => !c.parentSlug);
+  // Only show subcategories belonging to a category that's currently checked above —
+  // picking a subcategory before its parent category doesn't make sense.
+  const selectedParentSubcategories = categories.filter(
+    (c) => c.parentSlug && categorySlugs.includes(c.parentSlug)
+  );
+
   function handleNameChange(value: string) {
     setName(value);
     if (!slugTouched) setSlug(slugify(value));
@@ -72,7 +79,13 @@ export default function ProductForm({ product }: { product?: Product }) {
   }
 
   function toggleCategory(value: string) {
-    setCategorySlugs((prev) => (prev.includes(value) ? prev.filter((c) => c !== value) : [...prev, value]));
+    setCategorySlugs((prev) => {
+      if (!prev.includes(value)) return [...prev, value];
+      // Unchecking a parent category also drops any of its subcategories that were
+      // selected — they'd otherwise stay in categorySlugs while disappearing from the UI.
+      const childSlugs = categories.filter((c) => c.parentSlug === value).map((c) => c.slug);
+      return prev.filter((c) => c !== value && !childSlugs.includes(c));
+    });
   }
 
   async function processFiles(files: File[]) {
@@ -396,7 +409,7 @@ export default function ProductForm({ product }: { product?: Product }) {
 
         <div>
           <FieldLabel required>Categories</FieldLabel>
-          {categories.length === 0 ? (
+          {parentCategories.length === 0 ? (
             <p className="text-xs text-slate-400">
               No categories yet — create one under{" "}
               <a href="/ad-techplugke/categories" className="underline">
@@ -406,7 +419,7 @@ export default function ProductForm({ product }: { product?: Product }) {
             </p>
           ) : (
             <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-              {categories.map((c) => (
+              {parentCategories.map((c) => (
                 <PillToggle key={c.slug} checked={categorySlugs.includes(c.slug)} onChange={() => toggleCategory(c.slug)}>
                   {c.name}
                 </PillToggle>
@@ -414,6 +427,22 @@ export default function ProductForm({ product }: { product?: Product }) {
             </div>
           )}
         </div>
+
+        {selectedParentSubcategories.length > 0 && (
+          <div>
+            <FieldLabel>Subcategories</FieldLabel>
+            <p className="mb-2 text-xs text-slate-400">
+              Brands/sub-groupings within the categories selected above.
+            </p>
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+              {selectedParentSubcategories.map((c) => (
+                <PillToggle key={c.slug} checked={categorySlugs.includes(c.slug)} onChange={() => toggleCategory(c.slug)}>
+                  {c.name}
+                </PillToggle>
+              ))}
+            </div>
+          </div>
+        )}
 
         <div>
           <FieldLabel>Show on homepage in</FieldLabel>

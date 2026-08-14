@@ -23,7 +23,10 @@ export default async function Home() {
   const moreProducts = (heroPool ?? []).filter(
     (p) => p.id !== heroProduct?.id && p.id !== newArrival?.id
   );
-  const featuredCategory = homeCategories.find((c) => c.slug === "sneakers") ?? homeCategories[0];
+  // "Shop By Category" is top-level categories only — subcategories (e.g. "Dell" under
+  // "Laptops & Computers") browse via their parent, not as their own tile on the homepage.
+  const topLevelCategories = homeCategories.filter((c) => !c.parentSlug);
+  const featuredCategory = topLevelCategories[0];
 
   return (
     <>
@@ -41,14 +44,14 @@ export default async function Home() {
         />
       )}
 
-      {homeCategories.length > 0 && (
+      {topLevelCategories.length > 0 && (
         <section id="shop-by-category" className="bg-cream py-20">
           <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
             <h2 className="text-center font-bold tracking-tight text-3xl text-ink sm:text-4xl">
               Shop By Category
             </h2>
             <div className="mt-12 grid grid-cols-2 gap-x-6 gap-y-10 sm:grid-cols-3 lg:grid-cols-6">
-              {homeCategories.map((category) => (
+              {topLevelCategories.map((category) => (
                 <CategoryCard key={category.id} category={category} />
               ))}
             </div>
