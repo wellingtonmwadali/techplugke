@@ -421,10 +421,10 @@ export default function ProductForm({ product }: { product?: Product }) {
           </div>
 
           {variantDimensions.length > 0 && (
-            <div className="mt-4 flex flex-col gap-4">
+            <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
               {variantDimensions.map((dim) => (
                 <div key={dim.name} className="flex items-start gap-3 rounded-xl bg-slate-50 p-3">
-                  <div className="flex-1">
+                  <div className="flex-1 min-w-0">
                     <TagInput
                       label={dim.name}
                       tags={dim.values}

@@ -3,12 +3,15 @@
 import Image from "next/image";
 import Link from "next/link";
 import { motion } from "framer-motion";
-import { Plus, Star } from "lucide-react";
+import { Plus, Star, MessageCircle } from "lucide-react";
 import { Product } from "@/lib/types";
 import { formatKes } from "@/lib/format";
 import { useCart } from "@/context/CartContext";
 import { cheapestVariant } from "@/lib/variants";
 import WishlistButton from "./WishlistButton";
+
+// Same number as WhatsAppButton.tsx/Footer.tsx/Header.tsx — the shop's primary WhatsApp line.
+const WHATSAPP_NUMBER = "254750032818";
 
 // Deterministic placeholder rating (no rating field exists in the product schema/API yet).
 // See CLAUDE.md "Known placeholders to swap before launch".
@@ -30,6 +33,15 @@ export default function ProductCard({ product }: { product: Product }) {
     // combination rather than sending the shopper to the product page just to pick one.
     const variant = cheapestVariant(product);
     addItem(product, product.colors[0] ?? "", variant?.options, 1);
+  }
+
+  function handleOrderOnWhatsApp(e: React.MouseEvent) {
+    e.preventDefault();
+    e.stopPropagation();
+    const lines = [`Hi TechPlug Kenya, I'd like to order:`, product.name, `Price: ${formatKes(product.price)}`];
+    if (typeof window !== "undefined") lines.push(`${window.location.origin}/product/${product.slug}`);
+    const url = `https://wa.me/${WHATSAPP_NUMBER}?text=${encodeURIComponent(lines.join("\n"))}`;
+    window.open(url, "_blank", "noopener,noreferrer");
   }
 
   return (
@@ -82,6 +94,13 @@ export default function ProductCard({ product }: { product: Product }) {
               <span className="text-xs text-ink/40 line-through">{formatKes(product.compareAtPrice)}</span>
             )}
           </div>
+          <button
+            onClick={handleOrderOnWhatsApp}
+            className="flex items-center gap-1.5 text-xs font-semibold text-[#25D366] hover:underline"
+          >
+            <MessageCircle size={13} />
+            Order via WhatsApp
+          </button>
         </div>
       </Link>
 
